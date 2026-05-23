@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>VibeSync 🎧 - Không Gian Nghe Nhạc Chung</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #121212; color: white;
+            min-height: 100vh; display: flex;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .container {
+            background: #1e1e1e; padding: 28px;
+            border-radius: 16px; width: 100%; max-width: 500px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        }
+        h2 { font-size: 1.3rem; margin-bottom: 4px; color: #1db954; }
+        .room-id { color: #888; font-size: 0.82rem; margin-bottom: 20px; }
+        .room-id span { color: #1db954; font-weight: bold; }
+
+        input {
+            width: 100%; padding: 10px 14px;
+            background: #2a2a2a; border: 1px solid #333;
+            border-radius: 8px; color: white; font-size: 0.9rem; margin-bottom: 10px;
+        }
+        input:focus { outline: none; border-color: #1db954; }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: bold; transition: .2s; }
+        .btn-green { background: #1db954; color: black; }
+        .btn-green:hover { background: #17a349; }
+        .btn-gray  { background: #333; color: white; }
+        .btn-gray:hover  { background: #444; }
+        .btn-spotify { background: #1db954; color: black; width: 100%; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: bold; }
+        .btn-spotify:hover { background: #17a349; }
+        .btn-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .msg { font-size: 0.82rem; color: #888; margin-top: 6px; min-height: 18px; }
+        .divider { display: flex; align-items: center; gap: 10px; margin: 12px 0; color: #555; font-size: 0.8rem; }
+        .divider::before,.divider::after { content:''; flex:1; border-top:1px solid #333; }
+
+        .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 10px; }
+
+        .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .search-row input { margin-bottom: 0; }
+
+        #playlist { max-height: 240px; overflow-y: auto; margin-bottom: 14px; }
+        #playlist::-webkit-scrollbar { width: 4px; }
+        #playlist::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        .song-item {
+            background: #2a2a2a; padding: 10px 14px; margin-bottom: 6px;
+            border-radius: 8px; cursor: pointer; transition: .15s;
+            display: flex; align-items: center; gap: 12px;
+            border: 2px solid transparent;
+        }
+        .song-item:hover { background: #333; }
+        .song-item.active { border-color: #1db954; background: #1a2a1a; }
+        .song-cover { width: 42px; height: 42px; border-radius: 6px; object-fit: cover; background: #333; flex-shrink: 0; }
+        .song-info strong { display: block; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+        .song-info span { font-size: 0.78rem; color: #888; }
+
+        .now-playing { background: #2a2a2a; border-radius: 10px; padding: 16px; }
+        .np-row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+        #np-cover { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: #333; flex-shrink: 0; }
+        #np-title  { font-size: 0.95rem; font-weight: bold; }
+        #np-artist { font-size: 0.8rem; color: #888; margin-top: 2px; }
+        #np-preview { font-size: 0.75rem; color: #888; margin-top: 4px; transition: color 0.3s; }
+
+        /* Giao diện Thanh phát nhạc */
+        .progress-container { margin: 16px 0 10px 0; }
+        .progress-bar-wrapper { width: 100%; position: relative; background: #444; height: 6px; border-radius: 3px; cursor: pointer; overflow: hidden; }
+        #progress-fill { height: 100%; background: #1db954; width: 0%; border-radius: 3px; transition: width 0.1s linear; }
+        .progress-bar-wrapper:hover #progress-fill { background: #1ed760; }
+        .time-box { display: flex; justify-content: space-between; font-size: 0.75rem; color: #888; margin-top: 6px; }
+
+        #connection-status { font-size: 0.78rem; color: #888; margin-top: 12px; display: flex; align-items: center; gap: 6px; }
+        .dot { width: 7px; height: 7px; border-radius: 50%; background: #555; flex-shrink: 0; }
+        .dot.on { background: #1db954; }
+
+        #player-section { display: none; }
+        .badge { display: inline-flex; align-items: center; gap: 5px; background: #1a2a1a; border: 1px solid #1db954; border-radius: 6px; padding: 3px 9px; font-size: 0.75rem; color: #1db954; margin-bottom: 14px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>VibeSync 🎧</h2>
+    <div class="room-id">Phòng: <span>ROOM_123</span></div>
+
+    <div id="auth-section">
+        <div class="section-title">Bước 1 — Tài khoản</div>
+        <input type="text"     id="username" placeholder="Tên đăng nhập" />
+        <input type="password" id="password" placeholder="Mật khẩu" />
+        <div class="btn-row">
+            <button class="btn btn-green" onclick="login()">Đăng nhập</button>
+            <button class="btn btn-gray"  onclick="register()">Đăng ký</button>
+        </div>
+        <div class="msg" id="auth-msg"></div>
+
+        <div class="divider">Bước 2 — Kết nối Spotify</div>
+        <button class="btn-spotify" onclick="loginSpotify()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+            </svg>
+            Kết nối Spotify
+        </button>
+    </div>
+
+    <div id="player-section">
+        <div class="badge">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+            Đã kết nối Spotify
+        </div>
+
+        <div class="section-title">Tìm bài hát</div>
+        <div class="search-row">
+            <input type="text" id="search-input" placeholder="Tìm bài hát, nghệ sĩ..." onkeydown="if(event.key==='Enter')searchSongs()" />
+            <button class="btn btn-green" onclick="searchSongs()">Tìm</button>
+        </div>
+
+        <div id="playlist"></div>
+
+        <div class="now-playing">
+            <div class="np-row">
+                <img id="np-cover" src="" alt="cover"/>
+                <div>
+                    <div id="np-title">Chưa chọn bài</div>
+                    <div id="np-artist"></div>
+                    <div id="np-preview">Đang tải cấu hình loa...</div>
+                </div>
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar-wrapper" id="progress-wrapper" onclick="seekAudio(event)">
+                    <div id="progress-fill"></div>
+                </div>
+                <div class="time-box">
+                    <span id="current-time">0:00</span>
+                    <span id="total-time">0:00</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <button class="btn btn-green" onclick="togglePlay()" style="width: 100%; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    Phát / Tạm dừng
+                </button>
+            </div>
+
+            <audio id="audio-player" style="display: none;"></audio>
+        </div>
+
+        <div id="connection-status">
+            <span class="dot" id="status-dot"></span>
+            <span id="status-text">Đang kết nối phòng...</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const AUTH_URL  = 'http://127.0.0.1:3001';
+    const ROOM_URL  = 'http://127.0.0.1:3003';
+    const roomId    = 'ROOM_123';
+
+    const SPOTIFY_CLIENT_ID = 'deab65fe4a64439b916a1e828c3c2d15';
+    const REDIRECT_URI      = 'http://127.0.0.1:5500/project/frontend/index.html'; 
+    const SCOPES            = 'streaming user-read-email user-read-private user-modify-playback-state';
+
+    let spotifyToken = '';
+    let socket = null;
+    let spotifyPlayer = null;
+    let deviceId = '';
+    let isPremium = true; 
+    let sdkProgressInterval = null;
+    
+    // Biến lưu tổng thời lượng bài hát hiện tại (dùng để tính toán khi tua)
+    let currentDuration = 0; 
+
+    const audio = document.getElementById('audio-player');
+
+    // Format thời gian
+    function formatTime(seconds) {
+        if (isNaN(seconds) || seconds === Infinity) return "0:00";
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    // Logic thanh tiến trình cho bản Free
+    audio.addEventListener('timeupdate', () => {
+        if (!isPremium && audio.duration) {
+            const pct = (audio.currentTime / audio.duration) * 100;
+            document.getElementById('progress-fill').style.width = pct + '%';
+            document.getElementById('current-time').innerText = formatTime(audio.currentTime);
+        }
+    });
+
+    audio.addEventListener('loadedmetadata', () => {
+        if (!isPremium) {
+            currentDuration = audio.duration;
+            document.getElementById('total-time').innerText = formatTime(currentDuration);
+        }
+    });
+
+    // ── XỬ LÝ SỰ KIỆN TUA NHẠC (SEEK) ────────────────────────
+    function seekAudio(event) {
+        if (currentDuration <= 0) return; // Chưa load xong nhạc thì không cho tua
+        
+        const rect = document.getElementById('progress-wrapper').getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const percentage = clickX / rect.width;
+
+        // Tính toán & thực hiện tua trên máy cục bộ
+        if (isPremium && spotifyPlayer) {
+            const seekMs = Math.floor(percentage * currentDuration);
+            spotifyPlayer.seek(seekMs).then(() => {
+                // UI sẽ tự cập nhật nhờ event 'player_state_changed'
+            });
+        } else if (!isPremium && audio.src) {
+            audio.currentTime = percentage * currentDuration;
+        }
+
+        // Bắn sự kiện qua Socket.io để bạn bè trong phòng tua theo
+        if (socket) {
+            socket.emit('music-control', {
+                roomId, 
+                action: 'seek-song', 
+                percentage: percentage 
+            });
+        }
+    }
+
+    // ── PKCE AUTH HELPERS ────────────────────────────────────
+    function generateRandomString(length) {
+        let text = '';
+        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+        for (let i = 0; i < length; i++) text += possible.charAt(Math.floor(Math.random() * possible.length));
+        return text;
+    }
+
+    async function generateCodeChallenge(codeVerifier) {
+        const data = new TextEncoder().encode(codeVerifier);
+        const digest = await window.crypto.subtle.digest('SHA-256', data);
+        return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    // ── ONLOAD ───────────────────────────────────────────────
+    window.onload = async () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+
+        if (code) {
+            const codeVerifier = localStorage.getItem('code_verifier');
+            if (!codeVerifier) return;
+            try {
+                const response = await fetch('https://accounts.spotify.com/api/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        client_id: SPOTIFY_CLIENT_ID, grant_type: 'authorization_code',
+                        code: code, redirect_uri: REDIRECT_URI, code_verifier: codeVerifier
+                    })
+                });
+                const data = await response.json();
+                if (data.access_token) {
+                    spotifyToken = data.access_token;
+                    localStorage.setItem('spotify_token', spotifyToken);
+                    localStorage.removeItem('code_verifier'); 
+                    window.history.replaceState(null, '', window.location.pathname);
+                    const user = localStorage.getItem('auth_user') || 'User';
+                    showPlayer(user);
+                } else {
+                    msg('❌ Lỗi xác thực Spotify!');
+                }
+            } catch (error) { console.error(error); }
+        } else {
+            const saved = localStorage.getItem('spotify_token');
+            if (saved) spotifyToken = saved;
+        }
+    };
+
+    // ── HỆ THỐNG TÀI KHOẢN ───────────────────────────────────
+    async function register() {
+        const { u, p } = getForm();
+        if (!u || !p) return msg('Nhập đủ thông tin nhé!');
+        const r = await post(`${AUTH_URL}/register`, { username: u, password: p });
+        if (r.ok) {
+            alert('🎉 Đăng ký tài khoản thành công! Bây giờ bạn có thể đăng nhập.');
+            msg('✅ Đăng ký thành công! Hãy đăng nhập.');
+        } else { msg('❌ ' + r.data.error); }
+    }
+
+    async function login() {
+        const { u, p } = getForm();
+        if (!u || !p) return msg('Nhập đủ thông tin nhé!');
+        const r = await post(`${AUTH_URL}/login`, { username: u, password: p });
+        if (r.ok) {
+            localStorage.setItem('auth_token', r.data.token);
+            localStorage.setItem('auth_user', u);
+            alert('👋 Đăng nhập thành công! Hãy tiếp tục kết nối Spotify ở Bước 2.');
+            msg('✅ Đăng nhập xong! Bây giờ kết nối Spotify bên dưới.');
+        } else { msg('❌ ' + r.data.error); }
+    }
+
+    async function loginSpotify() {
+        if (!localStorage.getItem('auth_token')) return msg('⚠️ Bạn cần Đăng nhập hệ thống trước!');
+        const codeVerifier = generateRandomString(128);
+        localStorage.setItem('code_verifier', codeVerifier);
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
+        const params = new URLSearchParams({
+            client_id: SPOTIFY_CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI,
+            scope: SCOPES, code_challenge_method: 'S256', code_challenge: codeChallenge, show_dialog: 'true'
+        });
+        window.location.href = 'https://accounts.spotify.com/authorize?' + params.toString();
+    }
+
+    function showPlayer(username) {
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('player-section').style.display = 'block';
+        document.querySelector('h2').innerText = '🎧 VibeSync - Xin chào, ' + username + '!';
+        connectSocket();
+        initWebPlaybackSDK(); 
+    }
+
+    // ── WEB PLAYBACK SDK ─────────────────────────────────────
+    function initWebPlaybackSDK() {
+        const script = document.createElement("script");
+        script.src = "https://sdk.scdn.co/spotify-player.js";
+        script.async = true;
+        document.body.appendChild(script);
+
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            spotifyPlayer = new Spotify.Player({
+                name: 'VibeSync Web Player 🎧',
+                getOAuthToken: cb => { cb(spotifyToken); },
+                volume: 0.8
+            });
+
+            spotifyPlayer.addListener('ready', ({ device_id }) => {
+                deviceId = device_id;
+                document.getElementById('np-preview').innerText = '✅ Sẵn sàng phát nhạc (Premium)';
+                document.getElementById('np-preview').style.color = '#1db954';
+            });
+
+            spotifyPlayer.addListener('player_state_changed', state => {
+                if (!state || !isPremium) return;
+                clearInterval(sdkProgressInterval);
+                
+                const { position, duration, paused } = state;
+                let currentTrackPos = position;
+                
+                // Cập nhật biến tổng thời gian của Premium
+                currentDuration = duration; 
+                document.getElementById('total-time').innerText = formatTime(duration / 1000);
+
+                const updateProgressBarUI = () => {
+                    const pct = (currentTrackPos / duration) * 100;
+                    document.getElementById('progress-fill').style.width = pct + '%';
+                    document.getElementById('current-time').innerText = formatTime(currentTrackPos / 1000);
+                };
+                updateProgressBarUI();
+
+                if (!paused) {
+                    sdkProgressInterval = setInterval(() => {
+                        currentTrackPos += 1000;
+                        if (currentTrackPos <= duration) updateProgressBarUI();
+                    }, 1000);
+                }
+            });
+
+            spotifyPlayer.addListener('account_error', () => {
+                isPremium = false;
+                document.getElementById('np-preview').innerText = '⚠️ Đang dùng bản Free (Chỉ nghe thử 30s)';
+                document.getElementById('np-preview').style.color = '#e22134';
+            });
+
+            spotifyPlayer.connect();
+        };
+    }
+
+    function togglePlay() {
+        if (isPremium && spotifyPlayer) spotifyPlayer.togglePlay();
+        else if (!isPremium && audio.src) {
+            audio.paused ? audio.play().catch(e=>console.warn(e)) : audio.pause();
+        }
+    }
+
+    // ── TÌM NHẠC & PHÁT ──────────────────────────────────────
+    async function searchSongs() {
+        const q = document.getElementById('search-input').value.trim();
+        if (!q || !spotifyToken) return;
+        const r = await fetch('https://api.spotify.com/v1/search?q=' + encodeURIComponent(q) + '&type=track&limit=8&market=VN',
+            { headers: { 'Authorization': 'Bearer ' + spotifyToken } }
+        );
+        if (r.status === 401) {
+            localStorage.removeItem('spotify_token');
+            spotifyToken = '';
+            return alert('Token Spotify hết hạn!');
+        }
+        const data = await r.json();
+        renderList(data.tracks.items);
+    }
+
+    function renderList(tracks) {
+        const div = document.getElementById('playlist');
+        div.innerHTML = '';
+        if (!tracks.length) return div.innerHTML = '<p style="color:#888;font-size:13px;">Không tìm thấy bài nào.</p>';
+        tracks.forEach(t => {
+            const cover = t.album.images[2]?.url || '';
+            const preview = t.preview_url || '';
+            const el = document.createElement('div');
+            el.className = 'song-item'; el.id = 'song-' + t.id;
+            el.innerHTML = `<img class="song-cover" src="${cover}" /><div class="song-info"><strong>${t.name}</strong><span>${t.artists.map(a=>a.name).join(', ')}</span></div>`;
+            el.onclick = () => playSong({ id: t.id, name: t.name, artist: t.artists.map(a=>a.name).join(', '), cover: t.album.images[0]?.url || '', preview }, true);
+            div.appendChild(el);
+        });
+    }
+
+    async function playSong(track, isOwner) {
+        document.getElementById('np-title').innerText = track.name;
+        document.getElementById('np-artist').innerText = track.artist;
+        document.getElementById('np-cover').src = track.cover;
+        document.querySelectorAll('.song-item').forEach(e => e.classList.remove('active'));
+        document.getElementById('song-' + track.id)?.classList.add('active');
+
+        document.getElementById('progress-fill').style.width = '0%';
+        document.getElementById('current-time').innerText = "0:00";
+        currentDuration = 0; // Reset tổng thời gian
+
+        if (isPremium && deviceId && spotifyToken) {
+            try {
+                await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+                    method: 'PUT', headers: { 'Authorization': `Bearer ${spotifyToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uris: [`spotify:track:${track.id}`] })
+                });
+            } catch (err) { console.error(err); }
+        } else if (!isPremium) {
+            if (track.preview) {
+                audio.src = track.preview;
+                audio.load();
+                audio.play().catch(e => console.warn(e));
+            } else {
+                audio.src = '';
+                document.getElementById('total-time').innerText = "0:00";
+                alert("Bài hát này không hỗ trợ preview 30s.");
+            }
+        }
+
+        if (isOwner && socket) {
+            socket.emit('music-control', {
+                roomId, action: 'change-song', trackId: track.id, trackName: track.name,
+                artistName: track.artist, coverUrl: track.cover, previewUrl: track.preview
+            });
+        }
+    }
+
+    // ── SOCKET.IO ─────────────────────────────────────────
+    function connectSocket() {
+        socket = io(ROOM_URL);
+        socket.on('connect', () => {
+            socket.emit('join-room', roomId);
+            document.getElementById('status-dot').classList.add('on');
+            document.getElementById('status-text').innerText = 'Đã vào phòng ROOM_123 ✓';
+        });
+        socket.on('disconnect', () => {
+            document.getElementById('status-dot').classList.remove('on');
+            document.getElementById('status-text').innerText = 'Mất kết nối...';
+        });
+        socket.on('sync-music', data => {
+            if (data.action === 'change-song') {
+                playSong({ id: data.trackId, name: data.trackName, artist: data.artistName, cover: data.coverUrl, preview: data.previewUrl }, false);
+            } 
+            // Xử lý bắt sự kiện tua từ bạn bè
+            else if (data.action === 'seek-song') {
+                if (currentDuration > 0) {
+                    if (isPremium && spotifyPlayer) {
+                        spotifyPlayer.seek(Math.floor(data.percentage * currentDuration));
+                    } else if (!isPremium && audio.src) {
+                        audio.currentTime = data.percentage * currentDuration;
+                    }
+                }
+            }
+        });
+    }
+
+    function getForm() { return { u: document.getElementById('username')?.value.trim(), p: document.getElementById('password')?.value.trim() }; }
+    function msg(m) { document.getElementById('auth-msg').innerText = m; }
+    async function post(url, body) {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        return { ok: r.ok, data: await r.json() };
+    }
+</script>
+</body>
+</html>
